@@ -1,9 +1,10 @@
-const Post = require('../models/Post');
-const Category = require('../models/Category');
-const Tag = require('../models/Tag');
-const cloudinary = require('cloudinary').v2;
-const slugify = require('slugify');
-const { validateObjectId } = require('../utils/validator');
+const Post = require("../models/Post");
+const Category = require("../models/Category");
+const Tag = require("../models/Tag");
+const cloudinary = require("cloudinary").v2;
+const slugify = require("slugify");
+const { validateObjectId } = require("../utils/validator");
+const postService = require("../services/postService");
 
 // Create a new post
 exports.createPost = async (req, res, next) => {
@@ -13,7 +14,7 @@ exports.createPost = async (req, res, next) => {
 
     // Validate input
     if (!title || !content) {
-      return res.status(400).json({ message: 'Title and content are required' });
+      return res.status(400).json({ message: "Title and content are required" });
     }
 
     // Generate slug
@@ -24,9 +25,9 @@ exports.createPost = async (req, res, next) => {
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const result = await cloudinary.uploader.upload(file.path, {
-          folder: 'yocodex/posts',
+          folder: "yocodex/posts",
         });
-        media.push({ url: result.secure_url, type: file.mimetype.startsWith('image') ? 'image' : 'video' });
+        media.push({ url: result.secure_url, type: file.mimetype.startsWith("image") ? "image" : "video" });
       }
     }
 
@@ -34,20 +35,20 @@ exports.createPost = async (req, res, next) => {
     if (categories) {
       for (const catId of categories) {
         if (!validateObjectId(catId) || !(await Category.findById(catId))) {
-          return res.status(400).json({ message: 'Invalid category' });
+          return res.status(400).json({ message: "Invalid category" });
         }
       }
     }
     if (tags) {
       for (const tagId of tags) {
         if (!validateObjectId(tagId) || !(await Tag.findById(tagId))) {
-          return res.status(400).json({ message: 'Invalid tag' });
+          return res.status(400).json({ message: "Invalid tag" });
         }
       }
     }
 
     // Create post
-    const post = new Post({
+    const post = postService.createPost({
       title,
       content,
       author,
@@ -55,12 +56,12 @@ exports.createPost = async (req, res, next) => {
       categories,
       tags,
       status,
-      publishDate: status === 'scheduled' ? publishDate : null,
+      publishDate: status === "scheduled" ? publishDate : null,
       media,
     });
 
     await post.save();
-    res.status(201).json({ message: 'Post created successfully', post });
+    res.status(201).json({ message: "Post created successfully", post });
   } catch (error) {
     next(error);
   }
@@ -76,15 +77,7 @@ exports.getPosts = async (req, res, next) => {
     if (tag) query.tags = tag;
     if (status) query.status = status;
 
-    const posts = await Post.find(query)
-      .populate('author', 'username avatar')
-      .populate('categories', 'name')
-      .populate('tags', 'name')
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
-      .sort({ createdAt: -1 });
-
-    const total = await Post.countDocuments(query);
+    const {posts,total} = await postService.GetPostWithFilters(query); 
 
     res.status(200).json({
       posts,
@@ -102,13 +95,9 @@ exports.getPostBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
 
-    const post = await Post.findOne({ slug })
-      .populate('author', 'username avatar')
-      .populate('categories', 'name')
-      .populate('tags', 'name');
-
+    const post = await postService.GetSinglePost(slug);
     if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
+      return res.status(404).json({ message: "Post not found" });
     }
 
     res.status(200).json(post);
@@ -126,18 +115,18 @@ exports.updatePost = async (req, res, next) => {
 
     // Validate post ID
     if (!validateObjectId(postId)) {
-      return res.status(400).json({ message: 'Invalid post ID' });
+      return res.status(400).json({ message: "Invalid post ID" });
     }
 
     // Find post
     const post = await Post.findById(postId);
     if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
+      return res.status(404).json({ message: "Post not found" });
     }
 
     // Check authorization
-    if (post.author.toString() !== userId.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Unauthorized' });
+    if (post.author.toString() !== userId.toString() && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Unauthorized" });
     }
 
     // Update fields
@@ -149,7 +138,7 @@ exports.updatePost = async (req, res, next) => {
     if (categories) {
       for (const catId of categories) {
         if (!validateObjectId(catId) || !(await Category.findById(catId))) {
-          return res.status(400).json({ message: 'Invalid category' });
+          return res.status(400).json({ message: "Invalid category" });
         }
       }
       post.categories = categories;
@@ -157,28 +146,28 @@ exports.updatePost = async (req, res, next) => {
     if (tags) {
       for (const tagId of tags) {
         if (!validateObjectId(tagId) || !(await Tag.findById(tagId))) {
-          return res.status(400).json({ message: 'Invalid tag' });
+          return res.status(400).json({ message: "Invalid tag" });
         }
       }
       post.tags = tags;
     }
     if (status) post.status = status;
-    if (publishDate && status === 'scheduled') post.publishDate = publishDate;
+    if (publishDate && status === "scheduled") post.publishDate = publishDate;
 
     // Handle media updates
     if (req.files && req.files.length > 0) {
       const media = [];
       for (const file of req.files) {
         const result = await cloudinary.uploader.upload(file.path, {
-          folder: 'yocodex/posts',
+          folder: "yocodex/posts",
         });
-        media.push({ url: result.secure_url, type: file.mimetype.startsWith('image') ? 'image' : 'video' });
+        media.push({ url: result.secure_url, type: file.mimetype.startsWith("image") ? "image" : "video" });
       }
       post.media = media;
     }
 
     await post.save();
-    res.status(200).json({ message: 'Post updated successfully', post });
+    res.status(200).json({ message: "Post updated successfully", post });
   } catch (error) {
     next(error);
   }
@@ -192,28 +181,28 @@ exports.deletePost = async (req, res, next) => {
 
     // Validate post ID
     if (!validateObjectId(postId)) {
-      return res.status(400).json({ message: 'Invalid post ID' });
+      return res.status(400).json({ message: "Invalid post ID" });
     }
 
     // Find post
     const post = await Post.findById(postId);
     if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
+      return res.status(404).json({ message: "Post not found" });
     }
 
     // Check authorization
-    if (post.author.toString() !== userId.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Unauthorized' });
+    if (post.author.toString() !== userId.toString() && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Unauthorized" });
     }
 
     // Delete media from Cloudinary
     for (const media of post.media) {
-      const publicId = media.url.split('/').pop().split('.')[0];
+      const publicId = media.url.split("/").pop().split(".")[0];
       await cloudinary.uploader.destroy(`yocodex/posts/${publicId}`);
     }
 
     await post.remove();
-    res.status(200).json({ message: 'Post deleted successfully' });
+    res.status(200).json({ message: "Post deleted successfully" });
   } catch (error) {
     next(error);
   }
@@ -227,13 +216,13 @@ exports.likePost = async (req, res, next) => {
 
     // Validate post ID
     if (!validateObjectId(postId)) {
-      return res.status(400).json({ message: 'Invalid post ID' });
+      return res.status(400).json({ message: "Invalid post ID" });
     }
 
     // Find post
     const post = await Post.findById(postId);
     if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
+      return res.status(404).json({ message: "Post not found" });
     }
 
     // Toggle like
@@ -245,7 +234,7 @@ exports.likePost = async (req, res, next) => {
     }
 
     await post.save();
-    res.status(200).json({ message: 'Like updated successfully', likes: post.likes });
+    res.status(200).json({ message: "Like updated successfully", likes: post.likes });
   } catch (error) {
     next(error);
   }

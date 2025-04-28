@@ -1,20 +1,15 @@
 const User = require("../models/User");
 const tokenGen = require("../utils/tokenGen");
+const authService = require("../services/authService");
 
 exports.Register = async (req, res) => {
-  const { name, email, password, phoneNumber, address } = req.body;
+  const { name, email, password } = req.body;
   try {
-    const exisitingUser = await User.findOne({ email });
+    const exisitingUser = await authService.findUserByEmail({ email });
     if (exisitingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
-    const user = await User.create({
-      name,
-      email,
-      password,
-      phoneNumber,
-      address,
-    });
+    const user = await authService.createUser({ name, user, password });
     user.password = undefined; // remove password from user object
     const token = tokenGen(user._id);
     res.status(201).json({
@@ -30,7 +25,7 @@ exports.Register = async (req, res) => {
 exports.Login = async (req, res) => {
   const { email, password } = req.body;
   try {
-    const user = await User.findOne({ email });
+    const user = await authService.findUserByEmail({ email });
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
