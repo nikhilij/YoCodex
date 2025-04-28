@@ -226,7 +226,7 @@ YoCodex prioritizes security and compliance:
 ## 📞 Contact
 
 Got questions or ideas? Reach out! 📧
-- **Email**: support@yocodex.com
+- **Email**: nikhilprince973@gmail.com
 - **GitHub Issues**: Create an issue in this repo 🐛
 
 ---
