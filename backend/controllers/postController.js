@@ -48,7 +48,7 @@ exports.createPost = async (req, res, next) => {
     }
 
     // Create post
-    const post = postService.createPost({
+    const post = postService.CreatePost({
       title,
       content,
       author,
