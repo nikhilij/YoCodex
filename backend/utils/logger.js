@@ -1,55 +1,55 @@
-const fs = require("fs");
-const path = require("path");
-const { createLogger, format, transports } = require("winston");
-const DailyRotateFile = require("winston-daily-rotate-file");
+const winston = require('winston');
+const path = require('path');
+const fs = require('fs');
 
-// Create logs directory if it doesn't exist
-const logsDir = path.join(__dirname, "../logs");
-if (!fs.existsSync(logsDir)) {
-   fs.mkdirSync(logsDir, { recursive: true });
-}
-
-// Custom format for logs
-const customFormat = format.combine(
-   format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-   format.errors({ stack: true }),
-   format.json(),
-   format.printf(({ timestamp, level, message, ...meta }) => {
-      return JSON.stringify({
-         timestamp,
-         level,
-         message,
-         ...meta,
-      });
-   })
+// Define log format
+const logFormat = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.errors({ stack: true }),
+  winston.format.json(),
+  winston.format.prettyPrint()
 );
 
-// Create Winston logger
-const logger = createLogger({
-   level: process.env.LOG_LEVEL || "info",
-   format: customFormat,
-   defaultMeta: { service: "yocodex-backend" },
-   transports: [
-      // Console transport for development
-      new transports.Console({
-         format: format.combine(
-            format.colorize(),
-            format.simple(),
-            format.printf(({ timestamp, level, message, ...meta }) => {
-               const metaString = Object.keys(meta).length > 0 ? `\n${JSON.stringify(meta, null, 2)}` : "";
-               return `[${timestamp}] ${level}: ${message}${metaString}`;
-            })
-         ),
-      }),
+// Create logger instance
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: logFormat,
+  defaultMeta: { service: 'yocodex-backend' },
+  transports: [
+    // Write all logs with importance level of `error` or less to `error.log`
+    new winston.transports.File({
+      filename: path.join(__dirname, '../logs/error.log'),
+      level: 'error',
+      maxsize: 5242880, // 5MB
+      maxFiles: 5
+    }),
+    
+    // Write all logs with importance level of `info` or less to `combined.log`
+    new winston.transports.File({
+      filename: path.join(__dirname, '../logs/combined.log'),
+      maxsize: 5242880, // 5MB
+      maxFiles: 5
+    }),
+    
+    // Write all logs to console in development
+    ...(process.env.NODE_ENV !== 'production' ? [
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.colorize(),
+          winston.format.simple()
+        )
+      })
+    ] : [])
+  ]
+});
 
-      // File transport for errors
-      new DailyRotateFile({
-         filename: path.join(logsDir, "error-%DATE%.log"),
-         datePattern: "YYYY-MM-DD",
-         level: "error",
-         maxSize: "20m",
-         maxFiles: "14d",
-         format: customFormat,
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, '../logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+module.exports = logger;
       }),
 
       // File transport for all logs
