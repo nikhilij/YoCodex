@@ -1,76 +1,76 @@
 const rateLimit = require("express-rate-limit");
 const RedisStore = require("rate-limit-redis");
-const redisClient = require("../config/redis");
-const Logger = require("../utils/logger");
+const redis = require("../config/redis");
 
-// Create rate limiter with Redis store
-const createRateLimiter = (options = {}) => {
-   const defaultOptions = {
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
-      message: {
-         error: "Too many requests from this IP, please try again later.",
-         retryAfter: Math.ceil(options.windowMs / 1000) || 900,
-      },
-      standardHeaders: true,
-      legacyHeaders: false,
-      handler: (req, res) => {
-         Logger.warn("Rate limit exceeded", {
-            ip: req.ip,
-            userAgent: req.get("User-Agent"),
-            endpoint: req.originalUrl,
-         });
-         res.status(429).json({
-            error: "Too many requests",
-            message: "Rate limit exceeded. Please try again later.",
-            retryAfter: Math.ceil(options.windowMs / 1000) || 900,
-         });
-      },
-      ...options,
-   };
+// Basic rate limiter
+const basicLimiter = rateLimit({
+   store: new RedisStore({
+      client: redis,
+      prefix: "rl:basic:",
+   }),
+   windowMs: 15 * 60 * 1000, // 15 minutes
+   max: 100, // limit each IP to 100 requests per windowMs
+   message: {
+      status: "error",
+      message: "Too many requests from this IP, please try again later.",
+      retryAfter: "15 minutes",
+   },
+   standardHeaders: true,
+   legacyHeaders: false,
+});
 
-   // Use Redis store if available
-   if (redisClient.isConnected) {
-      defaultOptions.store = new RedisStore({
-         sendCommand: (...args) => redisClient.client.sendCommand(args),
-      });
-   }
+// Strict limiter for auth endpoints
+const authLimiter = rateLimit({
+   store: new RedisStore({
+      client: redis,
+      prefix: "rl:auth:",
+   }),
+   windowMs: 15 * 60 * 1000, // 15 minutes
+   max: 5, // limit each IP to 5 requests per windowMs
+   message: {
+      status: "error",
+      message: "Too many authentication attempts, please try again later.",
+      retryAfter: "15 minutes",
+   },
+   skipSuccessfulRequests: true,
+});
 
-   return rateLimit(defaultOptions);
+// Create post limiter
+const createPostLimiter = rateLimit({
+   store: new RedisStore({
+      client: redis,
+      prefix: "rl:post:",
+   }),
+   windowMs: 60 * 60 * 1000, // 1 hour
+   max: 10, // limit to 10 posts per hour
+   message: {
+      status: "error",
+      message: "Too many posts created, please try again later.",
+      retryAfter: "1 hour",
+   },
+});
+
+// Comment limiter
+const commentLimiter = rateLimit({
+   store: new RedisStore({
+      client: redis,
+      prefix: "rl:comment:",
+   }),
+   windowMs: 10 * 60 * 1000, // 10 minutes
+   max: 20, // limit to 20 comments per 10 minutes
+   message: {
+      status: "error",
+      message: "Too many comments, please slow down.",
+      retryAfter: "10 minutes",
+   },
+});
+
+module.exports = {
+   basicLimiter,
+   authLimiter,
+   createPostLimiter,
+   commentLimiter,
 };
-
-// Different rate limiters for different endpoints
-const rateLimiters = {
-   // General API rate limiter
-   general: createRateLimiter({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // 100 requests per 15 minutes
-   }),
-
-   // Strict rate limiter for auth endpoints
-   auth: createRateLimiter({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 5, // 5 attempts per 15 minutes
-      skipSuccessfulRequests: true,
-      keyGenerator: (req) => {
-         return req.ip + ":" + (req.body.email || req.body.username || "");
-      },
-   }),
-
-   // Rate limiter for file uploads
-   upload: createRateLimiter({
-      windowMs: 60 * 60 * 1000, // 1 hour
-      max: 10, // 10 uploads per hour
-   }),
-
-   // Rate limiter for search endpoints
-   search: createRateLimiter({
-      windowMs: 1 * 60 * 1000, // 1 minute
-      max: 30, // 30 searches per minute
-   }),
-
-   // Rate limiter for posting content
-   posting: createRateLimiter({
       windowMs: 60 * 60 * 1000, // 1 hour
       max: 20, // 20 posts per hour
    }),

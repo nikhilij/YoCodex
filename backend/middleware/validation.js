@@ -1,66 +1,66 @@
-const { body, param, query, validationResult } = require("express-validator");
-const { validateObjectId, validateEmail, validatePassword, validateUsername } = require("../utils/validator");
-const Logger = require("../utils/logger");
+const Joi = require('joi');
+const { AppError } = require('./errorHandler');
 
-// Handle validation errors
-const handleValidationErrors = (req, res, next) => {
-   const errors = validationResult(req);
-   if (!errors.isEmpty()) {
-      Logger.warn("Validation failed", {
-         requestId: req.requestId,
-         errors: errors.array(),
-         body: req.body,
-         params: req.params,
-         query: req.query,
-      });
+const validate = (schema) => {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req.body, {
+      abortEarly: false,
+      allowUnknown: false,
+      stripUnknown: true
+    });
 
-      return res.status(400).json({
-         error: "Validation failed",
-         details: errors.array().map((error) => ({
-            field: error.param,
-            message: error.msg,
-            value: error.value,
-         })),
-      });
-   }
-   next();
+    if (error) {
+      const errorMessage = error.details
+        .map(detail => detail.message.replace(/"/g, ''))
+        .join(', ');
+      
+      return next(new AppError(errorMessage, 400));
+    }
+
+    req.body = value;
+    next();
+  };
 };
 
-// Validation rules
-const validationRules = {
-   // Auth validation
-   register: [
-      body("username")
-         .trim()
-         .isLength({ min: 3, max: 20 })
-         .withMessage("Username must be between 3 and 20 characters")
-         .matches(/^[a-zA-Z0-9_]+$/)
-         .withMessage("Username can only contain letters, numbers, and underscores"),
-      body("email").trim().isEmail().normalizeEmail().withMessage("Please provide a valid email"),
-      body("password")
-         .isLength({ min: 8 })
-         .withMessage("Password must be at least 8 characters long")
-         .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-         .withMessage("Password must contain at least one uppercase letter, one lowercase letter, and one number"),
-      handleValidationErrors,
-   ],
+const validateParams = (schema) => {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req.params);
 
-   login: [
-      body("email").trim().isEmail().normalizeEmail().withMessage("Please provide a valid email"),
-      body("password").notEmpty().withMessage("Password is required"),
-      handleValidationErrors,
-   ],
+    if (error) {
+      const errorMessage = error.details
+        .map(detail => detail.message.replace(/"/g, ''))
+        .join(', ');
+      
+      return next(new AppError(errorMessage, 400));
+    }
 
-   // Post validation
-   createPost: [
-      body("title").trim().isLength({ min: 1, max: 100 }).withMessage("Title must be between 1 and 100 characters"),
-      body("content")
-         .trim()
-         .isLength({ min: 1, max: 50000 })
-         .withMessage("Content must be between 1 and 50000 characters"),
-      body("categories").optional().isArray().withMessage("Categories must be an array"),
-      body("categories.*")
-         .optional()
+    req.params = value;
+    next();
+  };
+};
+
+const validateQuery = (schema) => {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req.query);
+
+    if (error) {
+      const errorMessage = error.details
+        .map(detail => detail.message.replace(/"/g, ''))
+        .join(', ');
+      
+      return next(new AppError(errorMessage, 400));
+    }
+
+    req.query = value;
+    next();
+  };
+};
+
+module.exports = {
+  validate,
+  validateParams,
+  validateQuery
+};
          .custom((value) => validateObjectId(value))
          .withMessage("Invalid category ID"),
       body("tags").optional().isArray().withMessage("Tags must be an array"),

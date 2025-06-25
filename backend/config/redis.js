@@ -1,5 +1,5 @@
 const redis = require("redis");
-const Logger = require("../utils/logger");
+const logger = require("../utils/logger");
 
 class RedisClient {
    constructor() {
@@ -13,55 +13,55 @@ class RedisClient {
             host: process.env.REDIS_HOST || "localhost",
             port: process.env.REDIS_PORT || 6379,
             password: process.env.REDIS_PASSWORD || undefined,
-            retry_strategy: (options) => {
-               if (options.error && options.error.code === "ECONNREFUSED") {
-                  Logger.error("Redis connection refused");
-                  return new Error("Redis connection refused");
-               }
-               if (options.total_retry_time > 1000 * 60 * 60) {
-                  Logger.error("Redis retry time exhausted");
-                  return new Error("Retry time exhausted");
-               }
-               if (options.attempt > 10) {
-                  return undefined;
-               }
-               return Math.min(options.attempt * 100, 3000);
-            },
-         });
-
-         this.client.on("connect", () => {
-            Logger.info("Redis client connected");
-            this.isConnected = true;
+            db: process.env.REDIS_DB || 0,
+            retryDelayOnFailover: 100,
+            maxRetriesPerRequest: 3,
          });
 
          this.client.on("error", (err) => {
-            Logger.error("Redis client error", { error: err.message });
+            logger.error("Redis Client Error:", err);
             this.isConnected = false;
          });
 
+         this.client.on("connect", () => {
+            logger.info("Redis connected successfully");
+            this.isConnected = true;
+         });
+
+         this.client.on("reconnecting", () => {
+            logger.info("Redis reconnecting...");
+         });
+
          this.client.on("end", () => {
-            Logger.info("Redis client disconnected");
+            logger.warn("Redis connection ended");
             this.isConnected = false;
          });
 
          await this.client.connect();
+         return this.client;
       } catch (error) {
-         Logger.error("Failed to connect to Redis", { error: error.message });
-         // Continue without Redis if connection fails
-      }
-   }
-
-   async get(key) {
-      if (!this.isConnected) return null;
-      try {
-         const result = await this.client.get(key);
-         return result ? JSON.parse(result) : null;
-      } catch (error) {
-         Logger.error("Redis GET error", { key, error: error.message });
+         logger.error("Redis connection failed:", error);
          return null;
       }
    }
 
+   getClient() {
+      return this.client;
+   }
+
+   isHealthy() {
+      return this.isConnected && this.client && this.client.isOpen;
+   }
+
+   async disconnect() {
+      if (this.client) {
+         await this.client.quit();
+         logger.info("Redis disconnected successfully");
+      }
+   }
+}
+
+module.exports = new RedisClient();
    async set(key, value, expireInSeconds = 3600) {
       if (!this.isConnected) return false;
       try {
